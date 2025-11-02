@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WeApRous Chat Application</title>
+    <link rel="stylesheet" href="/static/css/chat.css">
+</head>
+<body>
+    <div class="chat-container">
+        <header class="chat-header">
+            <h1>WeApRous Chat</h1>
+            <div class="user-info">
+                <span id="current-user">Not logged in</span>
+                <button id="logout-btn" style="display: none;">Logout</button>
+            </div>
+        </header>
+
+        <!-- Login Section -->
+        <div id="login-section" class="login-section">
+            <div class="login-form">
+                <h2>Login to Chat</h2>
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="username">Username:</label>
+                        <input type="text" id="username" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password:</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    <button type="submit">Login</button>
+                </form>
+                <div id="login-error" class="error-message"></div>
+            </div>
+        </div>
+
+        <!-- Chat Section -->
+        <div id="chat-section" class="chat-section" style="display: none;">
+            <div class="sidebar">
+                <div class="peer-section">
+                    <h3>Online Peers (<span id="peer-count">0</span>)</h3>
+                    <ul id="peer-list"></ul>
+                    <button id="refresh-peers">Refresh Peers</button>
+                </div>
+                
+                <div class="channel-section">
+                    <h3>Channels</h3>
+                    <ul id="channel-list">
+                        <li class="channel active" data-channel="general"># general</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="main-chat">
+                <div class="chat-header-info">
+                    <h3 id="current-channel"># general</h3>
+                    <div class="chat-controls">
+                        <button id="connect-all-peers">Connect to All Peers</button>
+                        <button id="clear-chat">Clear Chat</button>
+                    </div>
+                </div>
+                
+                <div id="message-container" class="message-container"></div>
+                
+                <div class="message-input">
+                    <form id="message-form">
+                        <input type="text" id="message-input" placeholder="Type your message..." required>
+                        <select id="message-type">
+                            <option value="broadcast">Broadcast</option>
+                            <option value="direct">Direct Message</option>
+                        </select>
+                        <select id="target-peer" style="display: none;">
+                            <option value="">Select Peer...</option>
+                        </select>
+                        <button type="submit">Send</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <span id="connection-status">Disconnected</span>
+            <span id="message-status"></span>
+        </div>
+    </div>
+
+    <script src="/static/js/chat.js"></script>
+</body>
+</html>
