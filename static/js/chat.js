@@ -256,17 +256,19 @@ class ChatApp {
         this.addSystemMessage(`Connected to ${connectedCount} out of ${otherPeers.length} peers`);
     }
     
-    addMessage(sender, content, type = 'other') {
+    addMessage(sender, content, type = 'other', serverTimestamp = null) {
         const messageContainer = document.getElementById('message-container');
         const messageElement = document.createElement('div');
         messageElement.className = `message ${type}`;
         
-        const timestamp = new Date().toLocaleTimeString();
-        
+        // SỬA LỖI: Ưu tiên timestamp của server nếu có, nếu không thì dùng thời gian hiện tại
+        const displayTime = serverTimestamp ? new Date(serverTimestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+        const storedTimestamp = serverTimestamp ? serverTimestamp : new Date().toISOString();
+
         messageElement.innerHTML = `
             <div class="message-header">${sender}</div>
             <div class="message-content">${this.escapeHtml(content)}</div>
-            <div class="message-time">${timestamp}</div>
+            <div class="message-time">${displayTime}</div>
         `;
         
         messageContainer.appendChild(messageElement);
@@ -276,7 +278,7 @@ class ChatApp {
         this.messages.push({
             sender: sender,
             content: content,
-            timestamp: timestamp,
+            timestamp: storedTimestamp, // <-- SỬA LỖI: Lưu timestamp chính xác
             type: type
         });
     }
@@ -305,19 +307,26 @@ class ChatApp {
     
     async getChannelMessages() {
         try {
-            const response = await this.makeRequest('GET', '/get-messages');
+            // Sửa lỗi: Chỉ lấy tin nhắn cho kênh hiện tại
+            const response = await this.makeRequest('GET', `/get-messages?channel=${this.currentChannel}`);
             
             if (response.status === 'success' && response.messages) {
                 response.messages.forEach(msg => {
-                    if (msg.from !== this.currentUser) {
-                        this.addMessage(msg.from, msg.message, 'other');
+                    // SỬA LỖI: Kiểm tra xem tin nhắn đã tồn tại hay chưa
+                    const messageExists = this.messages.some(m => 
+                        m.timestamp === msg.timestamp && m.sender === msg.from
+                    );
+
+                    // Chỉ thêm tin nhắn nếu nó là của người khác VÀ nó chưa tồn tại
+                    if (msg.from !== this.currentUser && !messageExists) {
+                        this.addMessage(msg.from, msg.message, 'other', msg.timestamp);
                     }
                 });
             }
         } catch (error) {
             console.error('Get messages error:', error);
         }
-    }
+    }   
     
     showChatSection() {
         document.getElementById('login-section').style.display = 'none';
