@@ -105,6 +105,12 @@ class HttpAdapter:
         try:
             # Handle the request
             msg = conn.recv(1024).decode()
+            # --- BỔ SUNG KHẮC PHỤC LỖI ---
+            if not msg:
+                print("[HttpAdapter] Client closed connection or sent empty request.")
+                conn.close()
+                return # Thoát khỏi hàm xử lý client
+            # -----------------------------
             req.prepare(msg, routes)
 
             # Public paths that don't require authentication
