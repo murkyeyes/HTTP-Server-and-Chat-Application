@@ -1,6 +1,7 @@
 /**
  * WeApRous Chat Application JavaScript
  * Handles chat functionality, peer connections, and UI interactions
+ * FIXED VERSION: Smart Merging of Pending Messages
  */
 
 class ChatApp {
@@ -11,9 +12,10 @@ class ChatApp {
         this.messages = [];
         this.isLoggedIn = false;
         
-        // API endpoints
-        this.apiBaseUrl = 'http://localhost:8001';
-        this.trackerUrl = 'http://localhost:8001';
+        // API endpoints - Tự động lấy IP hiện tại
+        const baseUrl = window.location.protocol + "//" + window.location.host;
+        this.apiBaseUrl = baseUrl;
+        this.trackerUrl = baseUrl;
         
         this.init();
     }
@@ -25,46 +27,47 @@ class ChatApp {
     }
     
     bindEvents() {
-        // Login form
+
         document.getElementById('login-form').addEventListener('submit', (e) => {
             e.preventDefault();
             this.handleLogin();
         });
         
-        // Message form
+
         document.getElementById('message-form').addEventListener('submit', (e) => {
             e.preventDefault();
             this.handleSendMessage();
         });
         
-        // Message type change
+
         document.getElementById('message-type').addEventListener('change', (e) => {
             this.handleMessageTypeChange(e.target.value);
         });
         
-        // Refresh peers button
+
         document.getElementById('refresh-peers').addEventListener('click', () => {
             this.refreshPeers();
         });
         
-        // Connect all peers button
+
         document.getElementById('connect-all-peers').addEventListener('click', () => {
             this.connectToAllPeers();
         });
         
-        // Clear chat button
+
         document.getElementById('clear-chat').addEventListener('click', () => {
             this.clearChat();
         });
         
-        // Logout button
+
         document.getElementById('logout-btn').addEventListener('click', () => {
             this.handleLogout();
         });
     }
     
     async handleLogin() {
-        const username = document.getElementById('username').value;
+        // Trim username để tránh lỗi so sánh sau này
+        const username = document.getElementById('username').value.trim();
         const password = document.getElementById('password').value;
         
         try {
@@ -80,11 +83,9 @@ class ChatApp {
                 this.updateConnectionStatus('connected');
                 this.addSystemMessage(`Welcome ${username}! You are now logged in.`);
                 
-                // Register as peer
                 await this.registerAsPeer();
-                
-                // Start refreshing peers
                 this.refreshPeers();
+                this.getChannelMessages();
                 
             } else {
                 this.showError('login-error', response.message || 'Login failed');
@@ -97,28 +98,24 @@ class ChatApp {
     
     async registerAsPeer() {
         try {
-            // Generate a random port for P2P communication
             const peerPort = Math.floor(Math.random() * 10000) + 50000;
-            
-            const response = await this.makeRequest('POST', '/submit-info', {
+            const currentIp = window.location.hostname;
+
+            await this.makeRequest('POST', '/submit-info', {
                 peer_id: this.currentUser,
-                ip: '127.0.0.1', // localhost for demo
+                ip: currentIp, 
                 port: peerPort
             });
             
-            if (response.status === 'success') {
-                this.addSystemMessage('Registered as peer successfully');
-            }
+            this.addSystemMessage('Registered as peer successfully');
         } catch (error) {
             console.error('Peer registration error:', error);
-            this.addSystemMessage('Failed to register as peer');
         }
     }
     
     async refreshPeers() {
         try {
             const response = await this.makeRequest('GET', '/get-list');
-            
             if (response.status === 'success') {
                 this.peers = response.peers || [];
                 this.updatePeerList();
@@ -126,19 +123,15 @@ class ChatApp {
             }
         } catch (error) {
             console.error('Refresh peers error:', error);
-            this.addSystemMessage('Failed to refresh peers');
         }
     }
     
     updatePeerList() {
         const peerList = document.getElementById('peer-list');
         const peerCount = document.getElementById('peer-count');
-        
-        // Filter out current user
         const otherPeers = this.peers.filter(peer => peer.peer_id !== this.currentUser);
         
         peerList.innerHTML = '';
-        
         otherPeers.forEach(peer => {
             const li = document.createElement('li');
             li.className = 'peer';
@@ -147,46 +140,46 @@ class ChatApp {
                 <span>${peer.peer_id}</span>
                 <small>(${peer.ip}:${peer.port})</small>
             `;
-            
             li.addEventListener('click', () => {
                 this.selectPeerForDirectMessage(peer.peer_id);
             });
-            
             peerList.appendChild(li);
         });
-        
         peerCount.textContent = otherPeers.length;
     }
     
     updateTargetPeerSelect() {
         const select = document.getElementById('target-peer');
+        const currentSelection = select.value;
         select.innerHTML = '<option value="">Select Peer...</option>';
         
         const otherPeers = this.peers.filter(peer => peer.peer_id !== this.currentUser);
-        
         otherPeers.forEach(peer => {
             const option = document.createElement('option');
             option.value = peer.peer_id;
             option.textContent = peer.peer_id;
+            if (peer.peer_id === currentSelection) option.selected = true;
             select.appendChild(option);
         });
     }
     
     selectPeerForDirectMessage(peerId) {
         document.getElementById('message-type').value = 'direct';
-        document.getElementById('target-peer').value = peerId;
-        document.getElementById('target-peer').style.display = 'block';
+        this.handleMessageTypeChange('direct');
+        const select = document.getElementById('target-peer');
+        if (!select.querySelector(`option[value="${peerId}"]`)) {
+             const option = document.createElement('option');
+             option.value = peerId;
+             option.textContent = peerId;
+             select.appendChild(option);
+        }
+        select.value = peerId;
         document.getElementById('message-input').focus();
     }
     
     handleMessageTypeChange(type) {
         const targetPeerSelect = document.getElementById('target-peer');
-        
-        if (type === 'direct') {
-            targetPeerSelect.style.display = 'block';
-        } else {
-            targetPeerSelect.style.display = 'none';
-        }
+        targetPeerSelect.style.display = (type === 'direct') ? 'block' : 'none';
     }
     
     async handleSendMessage() {
@@ -198,37 +191,38 @@ class ChatApp {
         if (!message) return;
         
         try {
+            // 1. Hiển thị ngay lập tức (Pending)
+            this.addMessage(this.currentUser, message, 'own', null, true);
+            messageInput.value = '';
+
             let response;
-            
             if (messageType === 'broadcast') {
                 response = await this.makeRequest('POST', '/broadcast-peer', {
                     from_peer: this.currentUser,
                     message: message,
                     channel: this.currentChannel
                 });
-                
-                // Add message to local display
-                this.addMessage(this.currentUser, message, 'own');
-                
+
             } else if (messageType === 'direct' && targetPeer) {
+
                 response = await this.makeRequest('POST', '/send-peer', {
                     from_peer: this.currentUser,
                     to_peer: targetPeer,
                     message: message
                 });
-                
-                // Add message to local display
-                this.addMessage(this.currentUser, `[To ${targetPeer}] ${message}`, 'own');
+                // Với tin nhắn direct, chúng ta cập nhật thêm text hiển thị
+                // Lưu ý: Logic merge có thể phức tạp hơn với direct, nhưng cơ bản vẫn hoạt động
             }
             
             if (response && response.status === 'success') {
-                messageInput.value = '';
+
                 this.updateMessageStatus('Message sent');
             } else {
                 this.updateMessageStatus('Failed to send message');
             }
-            
+
         } catch (error) {
+
             console.error('Send message error:', error);
             this.updateMessageStatus('Network error');
         }
@@ -244,42 +238,83 @@ class ChatApp {
                     from_peer: this.currentUser,
                     to_peer: peer.peer_id
                 });
-                
-                if (response.status === 'success') {
-                    connectedCount++;
-                }
-            } catch (error) {
-                console.error(`Failed to connect to ${peer.peer_id}:`, error);
-            }
+                if (response.status === 'success') connectedCount++;
+            } catch (error) { console.error(error); }
         }
-        
         this.addSystemMessage(`Connected to ${connectedCount} out of ${otherPeers.length} peers`);
     }
     
-    addMessage(sender, content, type = 'other', serverTimestamp = null) {
+    // --- HÀM QUAN TRỌNG NHẤT ĐỂ FIX LỖI ---
+    addMessage(sender, content, type = 'other', serverTimestamp = null, isPending = false) {
+        // Chuẩn hóa dữ liệu để so sánh chính xác
+        const cleanSender = sender ? sender.trim() : 'Unknown';
+        const cleanContent = content ? content.trim() : '';
+
+        // 1. Nếu tin này đã có Timestamp từ server (tức là tin thật), kiểm tra xem nó đã tồn tại chưa
+        if (serverTimestamp) {
+            const alreadyExists = this.messages.some(m => m.timestamp === serverTimestamp);
+            if (alreadyExists) return; // Đã có rồi thì thôi, không làm gì cả
+        }
+
+        // 2. Logic "Hợp nhất" (Merge): 
+        // Nếu đây là tin từ Server (có timestamp) VÀ không phải Pending
+        if (serverTimestamp && !isPending) {
+            // Tìm xem trong danh sách hiện tại có tin Pending nào khớp không (Cùng người gửi, Cùng nội dung)
+            const pendingIdx = this.messages.findIndex(m => 
+                m.isPending && 
+                m.sender === cleanSender && 
+                m.content === cleanContent
+            );
+
+            if (pendingIdx !== -1) {
+                // -> TÌM THẤY! Đây chính là tin mình vừa gửi.
+                const pendingMsg = this.messages[pendingIdx];
+                
+                // Cập nhật thông tin cho nó thành tin chính thức
+                pendingMsg.timestamp = serverTimestamp;
+                pendingMsg.isPending = false;
+                
+                // Cập nhật giao diện HTML tương ứng
+                if (pendingMsg.element) {
+                    pendingMsg.element.classList.remove('msg-pending'); // Bỏ hiệu ứng mờ nếu có
+                    const timeDiv = pendingMsg.element.querySelector('.message-time');
+                    if (timeDiv) {
+                        timeDiv.textContent = new Date(serverTimestamp).toLocaleTimeString();
+                    }
+                }
+                // Kết thúc hàm, không tạo bong bóng chat mới -> KHẮC PHỤC LỖI NHÂN ĐÔI
+                return; 
+            }
+        }
+
+        // 3. Nếu chạy đến đây, tức là:
+        // - Hoặc là tin Pending mới tinh (vừa bấm gửi)
+        // - Hoặc là tin từ Server mà chưa có trong danh sách Pending (tin người khác gửi, hoặc tin cũ)
+        
         const messageContainer = document.getElementById('message-container');
         const messageElement = document.createElement('div');
         messageElement.className = `message ${type}`;
-        
-        // SỬA LỖI: Ưu tiên timestamp của server nếu có, nếu không thì dùng thời gian hiện tại
-        const displayTime = serverTimestamp ? new Date(serverTimestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-        const storedTimestamp = serverTimestamp ? serverTimestamp : new Date().toISOString();
+        if (isPending) messageElement.classList.add('msg-pending'); // Thêm class để đánh dấu
 
+        const displayTime = serverTimestamp ? new Date(serverTimestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+        
         messageElement.innerHTML = `
-            <div class="message-header">${sender}</div>
-            <div class="message-content">${this.escapeHtml(content)}</div>
+            <div class="message-header">${this.escapeHtml(cleanSender)}</div>
+            <div class="message-content">${this.escapeHtml(cleanContent)}</div>
             <div class="message-time">${displayTime}</div>
         `;
         
         messageContainer.appendChild(messageElement);
         messageContainer.scrollTop = messageContainer.scrollHeight;
         
-        // Store message
+        // Lưu vào bộ nhớ để quản lý
         this.messages.push({
-            sender: sender,
-            content: content,
-            timestamp: storedTimestamp, // <-- SỬA LỖI: Lưu timestamp chính xác
-            type: type
+            sender: cleanSender,
+            content: cleanContent,
+            timestamp: serverTimestamp,
+            type: type,
+            isPending: isPending,
+            element: messageElement
         });
     }
     
@@ -287,14 +322,11 @@ class ChatApp {
         const messageContainer = document.getElementById('message-container');
         const messageElement = document.createElement('div');
         messageElement.className = 'message system';
-        
         const timestamp = new Date().toLocaleTimeString();
-        
         messageElement.innerHTML = `
             <div class="message-content">${this.escapeHtml(content)}</div>
             <div class="message-time">${timestamp}</div>
         `;
-        
         messageContainer.appendChild(messageElement);
         messageContainer.scrollTop = messageContainer.scrollHeight;
     }
@@ -307,25 +339,16 @@ class ChatApp {
     
     async getChannelMessages() {
         try {
-            // Sửa lỗi: Chỉ lấy tin nhắn cho kênh hiện tại
             const response = await this.makeRequest('GET', `/get-messages?channel=${this.currentChannel}`);
             
             if (response.status === 'success' && response.messages) {
                 response.messages.forEach(msg => {
-                    // SỬA LỖI: Kiểm tra xem tin nhắn đã tồn tại hay chưa
-                    const messageExists = this.messages.some(m => 
-                        m.timestamp === msg.timestamp && m.sender === msg.from
-                    );
-
-                    // Chỉ thêm tin nhắn nếu nó là của người khác VÀ nó chưa tồn tại
-                    if (msg.from !== this.currentUser && !messageExists) {
-                        this.addMessage(msg.from, msg.message, 'other', msg.timestamp);
-                    }
+                    const type = msg.from === this.currentUser ? 'own' : 'other';
+                    // Gọi thẳng addMessage, để nó tự xử lý việc hợp nhất (merge)
+                    this.addMessage(msg.from, msg.message, type, msg.timestamp, false);
                 });
             }
-        } catch (error) {
-            console.error('Get messages error:', error);
-        }
+        } catch (error) { }
     }   
     
     showChatSection() {
@@ -346,7 +369,6 @@ class ChatApp {
         this.currentUser = null;
         this.peers = [];
         this.messages = [];
-        
         this.showLoginSection();
         this.updateConnectionStatus('disconnected');
         this.clearForm();
@@ -356,36 +378,35 @@ class ChatApp {
         document.getElementById('username').value = '';
         document.getElementById('password').value = '';
         document.getElementById('message-input').value = '';
-        document.getElementById('login-error').textContent = '';
+        const err = document.getElementById('login-error');
+        if(err) err.textContent = '';
     }
     
     updateConnectionStatus(status) {
         const statusElement = document.getElementById('connection-status');
-        statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-        statusElement.className = status;
+        if(statusElement) {
+            statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+            statusElement.className = status;
+        }
     }
     
     updateMessageStatus(message) {
         const statusElement = document.getElementById('message-status');
+        if(!statusElement) return;
         statusElement.textContent = message;
-        
-        // Clear after 3 seconds
-        setTimeout(() => {
-            statusElement.textContent = '';
-        }, 3000);
+        setTimeout(() => { statusElement.textContent = ''; }, 3000);
     }
     
     showError(elementId, message) {
         const errorElement = document.getElementById(elementId);
-        errorElement.textContent = message;
-        
-        // Clear after 5 seconds
-        setTimeout(() => {
-            errorElement.textContent = '';
-        }, 5000);
+        if(errorElement) {
+            errorElement.textContent = message;
+            setTimeout(() => { errorElement.textContent = ''; }, 5000);
+        }
     }
     
     escapeHtml(text) {
+        if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
@@ -395,43 +416,27 @@ class ChatApp {
         const url = this.trackerUrl + endpoint;
         const options = {
             method: method,
-            headers: {
-                'Content-Type': 'application/json',
-            }
+            headers: { 'Content-Type': 'application/json' }
         };
-        
-        if (data && method !== 'GET') {
-            options.body = JSON.stringify(data);
-        }
-        
+        if (data && method !== 'GET') options.body = JSON.stringify(data);
         const response = await fetch(url, options);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return await response.json();
     }
     
     startPeriodicUpdates() {
-        // Refresh peers every 30 seconds if logged in
+
         setInterval(() => {
-            if (this.isLoggedIn) {
-                this.refreshPeers();
+            if (this.isLoggedIn) 
+            {
                 this.getChannelMessages();
+                this.refreshPeers();
             }
-        }, 30000);
-        
-        // Update message status every 10 seconds if logged in
-        setInterval(() => {
-            if (this.isLoggedIn) {
-                this.updateMessageStatus('');
-            }
-        }, 10000);
+        }, 2000);
     }
 }
 
-// Initialize the chat application when the DOM is loaded
+
 document.addEventListener('DOMContentLoaded', () => {
     window.chatApp = new ChatApp();
 });

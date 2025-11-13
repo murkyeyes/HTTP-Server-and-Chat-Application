@@ -15,7 +15,7 @@ import json
 class SystemTester:
     def __init__(self):
         self.processes = []
-        self.base_path = r"d:\HK251\MMT\BTL1\CO3094-weaprous"
+        self.base_path = os.getcwd()  # Assuming scripts are in the current directory
         self.test_results = {}
         
     def start_process(self, script_name, args=[]):

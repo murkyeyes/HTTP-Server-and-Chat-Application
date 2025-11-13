@@ -18,6 +18,12 @@ import threading
 import argparse
 from daemon.p2p import P2PNode, create_chat_handlers
 
+# Thêm vào sau các dòng import
+try:
+    input = raw_input
+except NameError:
+    pass
+
 def main():
     parser = argparse.ArgumentParser(description='P2P Chat Client')
     parser.add_argument('--peer-id', required=True, help='Your peer ID')
